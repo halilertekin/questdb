@@ -61,6 +61,12 @@ public interface CharSink {
 
     CharSink put(double value, int scale);
 
+    CharSink putDirect(float value);
+
+    CharSink putDirect(double value);
+
+    CharSink putDirect(double value, int scale);
+
     CharSink put(boolean value);
 
     CharSink put(Throwable e);
