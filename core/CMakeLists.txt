@@ -68,8 +68,8 @@ elseif (UNIX)
         )
     else (CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
         MESSAGE("Building for GNU/Linux")
-        MESSAGE("Enabling multiversion compilation")
-        add_compile_definitions(ENABLE_MULTIVERSION)
+#        MESSAGE("Enabling multiversion compilation")
+#        add_compile_definitions(ENABLE_MULTIVERSION)
 #        add_compile_definitions(ENABLE_ASMLIB)
 #        add_compile_definitions(ENABLE_MANUAL_MEMCPY)
 
@@ -215,6 +215,9 @@ else ()
     set_target_properties(
             questdb PROPERTIES
             COMPILE_FLAGS "-m64 -O3"
+#            COMPILE_FLAGS "-m64 -O3 -mavx"
+#            COMPILE_FLAGS "-m64 -O3 -mavx512f -fPIC -mfma -mavx512vl -mavx512bw -mavx512dq"
+#            COMPILE_FLAGS "-m64 -O3 -mavx2 -fPIC -mfma"
     )
 
 #    TODO: SSE2 and SSE4 are redundant on 64 bit CPUs

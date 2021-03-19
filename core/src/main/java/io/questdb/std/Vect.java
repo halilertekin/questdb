@@ -195,6 +195,10 @@ public final class Vect {
 
     private static native void memcpy0(long src, long dst, long len);
 
+    public static native void printPerformanceCounters();
+
+    public static native void resetPerformanceCounters();
+
     // Benchmarking
     public static native void oooMergeCopyStrColumnMvMemcpy(
             long mergeIndexAddr,

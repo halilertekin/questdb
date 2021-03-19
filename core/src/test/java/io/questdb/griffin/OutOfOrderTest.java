@@ -32,13 +32,16 @@ import io.questdb.log.Log;
 import io.questdb.log.LogFactory;
 import io.questdb.mp.WorkerPool;
 import io.questdb.std.Chars;
+import io.questdb.std.Os;
 import io.questdb.std.Rnd;
+import io.questdb.std.Vect;
 import io.questdb.std.datetime.microtime.TimestampFormatUtils;
 import io.questdb.std.str.DirectCharSink;
 import io.questdb.std.str.MutableCharSink;
 import io.questdb.std.str.Path;
 import io.questdb.std.str.StringSink;
 import io.questdb.test.tools.TestUtils;
+import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -54,6 +57,7 @@ public class OutOfOrderTest extends AbstractGriffinTest {
 
     @Before
     public void setUp3() {
+        //Os.init();
         configuration = new DefaultCairoConfiguration(root) {
             @Override
             public boolean isOutOfOrderEnabled() {
@@ -79,6 +83,17 @@ public class OutOfOrderTest extends AbstractGriffinTest {
         Path.PATH.get();
         Path.PATH2.get();
     }
+
+    @Before
+    public void setUp4() {
+        Vect.resetPerformanceCounters();
+    }
+
+    @After
+    public void tearDown4() {
+        Vect.printPerformanceCounters();
+    }
+
 
     @Test
     public void testBench() throws Exception {

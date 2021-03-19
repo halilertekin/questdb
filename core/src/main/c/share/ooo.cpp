@@ -28,7 +28,10 @@
 #include "simd.h"
 #include "asmlib/asmlib.h"
 #include "vcl/vectorclass.h"
+#include <atomic>
+#include <iostream>
 #include <immintrin.h>
+#include <x86intrin.h>
 
 #ifdef __APPLE__
 #define __JLONG_REINTERPRET_CAST__(type, var)  (type)var
@@ -843,6 +846,19 @@ inline void copy_index(const index_t *index, const int64_t count, int64_t *dest)
     run_vec_bulk<int64_t, Vec8q>(dest, count, l_iteration, l_bulk);
 }
 
+const int perf_counter_length = 23;
+std::atomic_ulong perf_counters[perf_counter_length];
+
+template<typename T>
+inline void measure_time(int index, T func) {
+    unsigned int junk;
+    auto start = __rdtscp(&junk);
+    func();
+    auto end = __rdtscp(&junk);
+    const auto diff = end - start;
+    perf_counters[index].fetch_add(diff);
+}
+
 extern "C" {
 
 __SIMD_MULTIVERSION__
@@ -857,18 +873,20 @@ Java_io_questdb_std_Vect_oooMergeCopyStrColumn(JNIEnv *env, jclass cl,
                                                jlong dst_fix,
                                                jlong dst_var,
                                                jlong dst_var_offset) {
-    merge_copy_var_column<int32_t>(
-            reinterpret_cast<index_t *>(merge_index),
-            __JLONG_REINTERPRET_CAST__(int64_t, merge_index_size),
-            reinterpret_cast<int64_t *>(src_data_fix),
-            reinterpret_cast<char *>(src_data_var),
-            reinterpret_cast<int64_t *>(src_ooo_fix),
-            reinterpret_cast<char *>(src_ooo_var),
-            reinterpret_cast<int64_t *>(dst_fix),
-            reinterpret_cast<char *>(dst_var),
-            __JLONG_REINTERPRET_CAST__(int64_t, dst_var_offset),
-            2
-    );
+    measure_time(0, [=]() {
+        merge_copy_var_column<int32_t>(
+                reinterpret_cast<index_t *>(merge_index),
+                __JLONG_REINTERPRET_CAST__(int64_t, merge_index_size),
+                reinterpret_cast<int64_t *>(src_data_fix),
+                reinterpret_cast<char *>(src_data_var),
+                reinterpret_cast<int64_t *>(src_ooo_fix),
+                reinterpret_cast<char *>(src_ooo_var),
+                reinterpret_cast<int64_t *>(dst_fix),
+                reinterpret_cast<char *>(dst_var),
+                __JLONG_REINTERPRET_CAST__(int64_t, dst_var_offset),
+                2
+        );
+    });
 }
 
 __SIMD_MULTIVERSION__
@@ -884,18 +902,20 @@ Java_io_questdb_std_Vect_oooMergeCopyStrColumnWithTop(JNIEnv *env, jclass cl,
                                                       jlong dst_fix,
                                                       jlong dst_var,
                                                       jlong dst_var_offset) {
-    merge_copy_var_column_top<int32_t>(
-            reinterpret_cast<index_t *>(merge_index),
-            __JLONG_REINTERPRET_CAST__(int64_t, merge_index_size),
-            reinterpret_cast<int64_t *>(src_data_fix),
-            src_data_fix_offset,
-            reinterpret_cast<char *>(src_data_var),
-            reinterpret_cast<int64_t *>(src_ooo_fix),
-            reinterpret_cast<char *>(src_ooo_var),
-            reinterpret_cast<int64_t *>(dst_fix),
-            reinterpret_cast<char *>(dst_var),
-            __JLONG_REINTERPRET_CAST__(int64_t, dst_var_offset),
-            2);
+    measure_time(1, [=]() {
+        merge_copy_var_column_top<int32_t>(
+                reinterpret_cast<index_t *>(merge_index),
+                __JLONG_REINTERPRET_CAST__(int64_t, merge_index_size),
+                reinterpret_cast<int64_t *>(src_data_fix),
+                src_data_fix_offset,
+                reinterpret_cast<char *>(src_data_var),
+                reinterpret_cast<int64_t *>(src_ooo_fix),
+                reinterpret_cast<char *>(src_ooo_var),
+                reinterpret_cast<int64_t *>(dst_fix),
+                reinterpret_cast<char *>(dst_var),
+                __JLONG_REINTERPRET_CAST__(int64_t, dst_var_offset),
+                2);
+    });
 }
 
 __SIMD_MULTIVERSION__
@@ -911,18 +931,20 @@ Java_io_questdb_std_Vect_oooMergeCopyBinColumnWithTop(JNIEnv *env, jclass cl,
                                                       jlong dst_fix,
                                                       jlong dst_var,
                                                       jlong dst_var_offset) {
-    merge_copy_var_column_top<int64_t>(
-            reinterpret_cast<index_t *>(merge_index),
-            __JLONG_REINTERPRET_CAST__(int64_t, merge_index_size),
-            reinterpret_cast<int64_t *>(src_data_fix),
-            src_data_fix_offset,
-            reinterpret_cast<char *>(src_data_var),
-            reinterpret_cast<int64_t *>(src_ooo_fix),
-            reinterpret_cast<char *>(src_ooo_var),
-            reinterpret_cast<int64_t *>(dst_fix),
-            reinterpret_cast<char *>(dst_var),
-            __JLONG_REINTERPRET_CAST__(int64_t, dst_var_offset),
-            1);
+    measure_time(2, [=]() {
+        merge_copy_var_column_top<int64_t>(
+                reinterpret_cast<index_t *>(merge_index),
+                __JLONG_REINTERPRET_CAST__(int64_t, merge_index_size),
+                reinterpret_cast<int64_t *>(src_data_fix),
+                src_data_fix_offset,
+                reinterpret_cast<char *>(src_data_var),
+                reinterpret_cast<int64_t *>(src_ooo_fix),
+                reinterpret_cast<char *>(src_ooo_var),
+                reinterpret_cast<int64_t *>(dst_fix),
+                reinterpret_cast<char *>(dst_var),
+                __JLONG_REINTERPRET_CAST__(int64_t, dst_var_offset),
+                1);
+    });
 }
 
 __SIMD_MULTIVERSION__
@@ -937,24 +959,28 @@ Java_io_questdb_std_Vect_oooMergeCopyBinColumn(JNIEnv *env, jclass cl,
                                                jlong dst_fix,
                                                jlong dst_var,
                                                jlong dst_var_offset) {
-    merge_copy_var_column<int64_t>(
-            reinterpret_cast<index_t *>(merge_index),
-            __JLONG_REINTERPRET_CAST__(int64_t, merge_index_size),
-            reinterpret_cast<int64_t *>(src_data_fix),
-            reinterpret_cast<char *>(src_data_var),
-            reinterpret_cast<int64_t *>(src_ooo_fix),
-            reinterpret_cast<char *>(src_ooo_var),
-            reinterpret_cast<int64_t *>(dst_fix),
-            reinterpret_cast<char *>(dst_var),
-            __JLONG_REINTERPRET_CAST__(int64_t, dst_var_offset),
-            1
-    );
+    measure_time(3, [=]() {
+        merge_copy_var_column<int64_t>(
+                reinterpret_cast<index_t *>(merge_index),
+                __JLONG_REINTERPRET_CAST__(int64_t, merge_index_size),
+                reinterpret_cast<int64_t *>(src_data_fix),
+                reinterpret_cast<char *>(src_data_var),
+                reinterpret_cast<int64_t *>(src_ooo_fix),
+                reinterpret_cast<char *>(src_ooo_var),
+                reinterpret_cast<int64_t *>(dst_fix),
+                reinterpret_cast<char *>(dst_var),
+                __JLONG_REINTERPRET_CAST__(int64_t, dst_var_offset),
+                1
+        );
+    });
 }
 
 __SIMD_MULTIVERSION__
 JNIEXPORT void JNICALL
 Java_io_questdb_std_Vect_sortLongIndexAscInPlace(JNIEnv *env, jclass cl, jlong pLong, jlong len) {
-    sort(reinterpret_cast<index_t *>(pLong), len);
+    measure_time(4, [=]() {
+        sort(reinterpret_cast<index_t *>(pLong), len);
+    });
 }
 
 __SIMD_MULTIVERSION__
@@ -1005,56 +1031,72 @@ __SIMD_MULTIVERSION__
 JNIEXPORT void JNICALL
 Java_io_questdb_std_Vect_indexReshuffle32Bit(JNIEnv *env, jclass cl, jlong pSrc, jlong pDest, jlong pIndex,
                                              jlong count) {
-    re_shuffle<int32_t, Vec8i>(pSrc, pDest, pIndex, count);
+    measure_time(5, [=]() {
+        re_shuffle<int32_t, Vec8i>(pSrc, pDest, pIndex, count);
+    });
 }
 
 __SIMD_MULTIVERSION__
 JNIEXPORT void JNICALL
 Java_io_questdb_std_Vect_indexReshuffle64Bit(JNIEnv *env, jclass cl, jlong pSrc, jlong pDest, jlong pIndex,
                                              jlong count) {
-    re_shuffle<int64_t, Vec8q>(pSrc, pDest, pIndex, count);
+    measure_time(6, [=]() {
+        re_shuffle<int64_t, Vec8q>(pSrc, pDest, pIndex, count);
+    });
 }
 
 __SIMD_MULTIVERSION__
 JNIEXPORT void JNICALL
 Java_io_questdb_std_Vect_indexReshuffle16Bit(JNIEnv *env, jclass cl, jlong pSrc, jlong pDest, jlong pIndex,
                                              jlong count) {
-    re_shuffle<int16_t, Vec16s>(pSrc, pDest, pIndex, count);
+    measure_time(7, [=]() {
+        re_shuffle<int16_t, Vec16s>(pSrc, pDest, pIndex, count);
+    });
 }
 
 __SIMD_MULTIVERSION__
 JNIEXPORT void JNICALL
 Java_io_questdb_std_Vect_indexReshuffle8Bit(JNIEnv *env, jclass cl, jlong pSrc, jlong pDest, jlong pIndex,
                                             jlong count) {
-    re_shuffle<int8_t, Vec16c>(pSrc, pDest, pIndex, count);
+    measure_time(8, [=]() {
+        re_shuffle<int8_t, Vec16c>(pSrc, pDest, pIndex, count);
+    });
 }
 
 __SIMD_MULTIVERSION__
 JNIEXPORT void JNICALL
 Java_io_questdb_std_Vect_mergeShuffle8Bit(JNIEnv *env, jclass cl, jlong src1, jlong src2, jlong dest, jlong index,
                                           jlong count) {
-    merge_shuffle<int8_t, Vec16c, 16>(src1, src2, dest, index, count);
+    measure_time(9, [=]() {
+        merge_shuffle<int8_t, Vec16c, 16>(src1, src2, dest, index, count);
+    });
 }
 
 __SIMD_MULTIVERSION__
 JNIEXPORT void JNICALL
 Java_io_questdb_std_Vect_mergeShuffle16Bit(JNIEnv *env, jclass cl, jlong src1, jlong src2, jlong dest, jlong index,
                                            jlong count) {
-    merge_shuffle<int16_t, Vec16s, 16>(src1, src2, dest, index, count);
+    measure_time(10, [=]() {
+        merge_shuffle<int16_t, Vec16s, 16>(src1, src2, dest, index, count);
+    });
 }
 
 __SIMD_MULTIVERSION__
 JNIEXPORT void JNICALL
 Java_io_questdb_std_Vect_mergeShuffle32Bit(JNIEnv *env, jclass cl, jlong src1, jlong src2, jlong dest, jlong index,
                                            jlong count) {
-    merge_shuffle<int32_t, Vec16i, 16>(src1, src2, dest, index, count);
+    measure_time(11, [=]() {
+        merge_shuffle<int32_t, Vec16i, 16>(src1, src2, dest, index, count);
+    });
 }
 
 __SIMD_MULTIVERSION__
 JNIEXPORT void JNICALL
 Java_io_questdb_std_Vect_mergeShuffle64Bit(JNIEnv *env, jclass cl, jlong src1, jlong src2, jlong dest, jlong index,
                                            jlong count) {
-    merge_shuffle<int64_t, Vec8q, 8>(src1, src2, dest, index, count);
+    measure_time(12, [=]() {
+        merge_shuffle<int64_t, Vec8q, 8>(src1, src2, dest, index, count);
+    });
 }
 
 __SIMD_MULTIVERSION__
@@ -1062,7 +1104,9 @@ JNIEXPORT void JNICALL
 Java_io_questdb_std_Vect_mergeShuffleWithTop64Bit(JNIEnv *env, jclass cl, jlong src1, jlong src2, jlong dest,
                                                   jlong index,
                                                   jlong count, jlong topOffset) {
-    merge_shuffle_top<int64_t, Vec8q, 8>(src1, src2, dest, index, count, topOffset);
+    measure_time(13, [=]() {
+        merge_shuffle_top<int64_t, Vec8q, 8>(src1, src2, dest, index, count, topOffset);
+    });
 }
 
 __SIMD_MULTIVERSION__
@@ -1070,7 +1114,9 @@ JNIEXPORT void JNICALL
 Java_io_questdb_std_Vect_mergeShuffleWithTop32Bit(JNIEnv *env, jclass cl, jlong src1, jlong src2, jlong dest,
                                                   jlong index,
                                                   jlong count, jlong topOffset) {
-    merge_shuffle_top<int32_t, Vec16i, 16>(src1, src2, dest, index, count, topOffset);
+    measure_time(14, [=]() {
+        merge_shuffle_top<int32_t, Vec16i, 16>(src1, src2, dest, index, count, topOffset);
+    });
 }
 
 __SIMD_MULTIVERSION__
@@ -1078,7 +1124,9 @@ JNIEXPORT void JNICALL
 Java_io_questdb_std_Vect_mergeShuffleWithTop16Bit(JNIEnv *env, jclass cl, jlong src1, jlong src2, jlong dest,
                                                   jlong index,
                                                   jlong count, jlong topOffset) {
-    merge_shuffle_top<int16_t, Vec16s, 16>(src1, src2, dest, index, count, topOffset);
+    measure_time(15, [=]() {
+        merge_shuffle_top<int16_t, Vec16s, 16>(src1, src2, dest, index, count, topOffset);
+    });
 }
 
 __SIMD_MULTIVERSION__
@@ -1086,27 +1134,30 @@ JNIEXPORT void JNICALL
 Java_io_questdb_std_Vect_mergeShuffleWithTop8Bit(JNIEnv *env, jclass cl, jlong src1, jlong src2, jlong dest,
                                                  jlong index,
                                                  jlong count, jlong topOffset) {
-    merge_shuffle_top<int8_t, Vec16c, 16>(src1, src2, dest, index, count, topOffset);
+    measure_time(16, [=]() {
+        merge_shuffle_top<int8_t, Vec16c, 16>(src1, src2, dest, index, count, topOffset);
+    });
 }
 
 __SIMD_MULTIVERSION__
 JNIEXPORT void JNICALL
 Java_io_questdb_std_Vect_flattenIndex(JNIEnv *env, jclass cl, jlong pIndex,
                                       jlong count) {
+    measure_time(17, [=]() {
+        auto *index = reinterpret_cast<index_t *>(pIndex);
+        Vec8q v_i = Vec8q(0, 1, 2, 3, 4, 5, 6, 7);
+        Vec8q v_inc = Vec8q(8);
+        int64_t i = 0;
+        for (; i < count - 7; i += 8) {
+            scatter<1, 3, 5, 7, 9, 11, 13, 15>(v_i, index + i);
+            v_i += v_inc;
+        }
 
-    auto *index = reinterpret_cast<index_t *>(pIndex);
-    Vec8q v_i = Vec8q(0, 1, 2, 3, 4, 5, 6, 7);
-    Vec8q v_inc = Vec8q(8);
-    int64_t i = 0;
-    for (; i < count - 7; i += 8) {
-        scatter<1, 3, 5, 7, 9, 11, 13, 15>(v_i, index + i);
-        v_i += v_inc;
-    }
-
-    // tail.
-    for (int64_t i = 0; i < count; i++) {
-        index[i].i = i;
-    }
+        // tail.
+        for (int64_t i = 0; i < count; i++) {
+            index[i].i = i;
+        }
+    });
 }
 
 __SIMD_MULTIVERSION__
@@ -1127,101 +1178,145 @@ __SIMD_MULTIVERSION__
 JNIEXPORT void JNICALL
 Java_io_questdb_std_Vect_makeTimestampIndex(JNIEnv *env, jclass cl, jlong pData, jlong low,
                                             jlong high, jlong pIndex) {
-    make_timestamp_index(
-            reinterpret_cast<int64_t *>(pData),
-            low,
-            high,
-            reinterpret_cast<index_t *>(pIndex)
-    );
+    measure_time(18, [=]() {
+        make_timestamp_index(
+                reinterpret_cast<int64_t *>(pData),
+                low,
+                high,
+                reinterpret_cast<index_t *>(pIndex)
+        );
+    });
 }
 
 __SIMD_MULTIVERSION__
 JNIEXPORT void JNICALL
 Java_io_questdb_std_Vect_setMemoryLong(JNIEnv *env, jclass cl, jlong pData, jlong value,
                                        jlong count) {
-    set_memory_vanilla<int64_t, Vec8q>(
-            reinterpret_cast<int64_t *>(pData),
-            __JLONG_REINTERPRET_CAST__(int64_t, value),
-            (int64_t) (count)
-    );
+    measure_time(18, [=]() {
+        set_memory_vanilla<int64_t, Vec8q>(
+                reinterpret_cast<int64_t *>(pData),
+                __JLONG_REINTERPRET_CAST__(int64_t, value),
+                (int64_t) (count)
+        );
+    });
 }
 
 __SIMD_MULTIVERSION__
 JNIEXPORT void JNICALL
 Java_io_questdb_std_Vect_setMemoryInt(JNIEnv *env, jclass cl, jlong pData, jint value,
                                       jlong count) {
-    set_memory_vanilla<jint, Vec16i>(
-            reinterpret_cast<jint *>(pData),
-            value,
-            (int64_t) (count)
-    );
+    measure_time(19, [=]() {
+        set_memory_vanilla<jint, Vec16i>(
+                reinterpret_cast<jint *>(pData),
+                value,
+                (int64_t) (count)
+        );
+    });
 }
 
 __SIMD_MULTIVERSION__
 JNIEXPORT void JNICALL
 Java_io_questdb_std_Vect_setMemoryDouble(JNIEnv *env, jclass cl, jlong pData, jdouble value,
                                          jlong count) {
-    set_memory_vanilla<jdouble, Vec8d>(
-            reinterpret_cast<jdouble *>(pData),
-            value,
-            (int64_t) (count)
-    );
+    measure_time(19, [=]() {
+        set_memory_vanilla<jdouble, Vec8d>(
+                reinterpret_cast<jdouble *>(pData),
+                value,
+                (int64_t) (count)
+        );
+    });
 }
 
 __SIMD_MULTIVERSION__
 JNIEXPORT void JNICALL
 Java_io_questdb_std_Vect_setMemoryFloat(JNIEnv *env, jclass cl, jlong pData, jfloat value,
                                         jlong count) {
-    set_memory_vanilla<jfloat, Vec16f>(
-            reinterpret_cast<jfloat *>(pData),
-            value,
-            (int64_t) (count)
-    );
+    measure_time(19, [=]() {
+        set_memory_vanilla<jfloat, Vec16f>(
+                reinterpret_cast<jfloat *>(pData),
+                value,
+                (int64_t) (count)
+        );
+    });
 }
 
 __SIMD_MULTIVERSION__
 JNIEXPORT void JNICALL
 Java_io_questdb_std_Vect_setMemoryShort(JNIEnv *env, jclass cl, jlong pData, jshort value,
                                         jlong count) {
-    set_memory_vanilla<jshort, Vec32s>(
-            reinterpret_cast<jshort *>(pData),
-            value,
-            (int64_t) (count)
-    );
+    measure_time(19, [=]() {
+        set_memory_vanilla<jshort, Vec32s>(
+                reinterpret_cast<jshort *>(pData),
+                value,
+                (int64_t) (count)
+        );
+    });
 }
 
 __SIMD_MULTIVERSION__
 JNIEXPORT void JNICALL
 Java_io_questdb_std_Vect_setVarColumnRefs32Bit(JNIEnv *env, jclass cl, jlong pData, jlong offset,
                                                jlong count) {
-    set_var_refs<int32_t>(
-            reinterpret_cast<int64_t *>(pData),
-            __JLONG_REINTERPRET_CAST__(int64_t, offset),
-            __JLONG_REINTERPRET_CAST__(int64_t, count)
-    );
+    measure_time(20, [=]() {
+        set_var_refs<int32_t>(
+                reinterpret_cast<int64_t *>(pData),
+                __JLONG_REINTERPRET_CAST__(int64_t, offset),
+                __JLONG_REINTERPRET_CAST__(int64_t, count)
+        );
+    });
 }
 
 __SIMD_MULTIVERSION__
 JNIEXPORT void JNICALL
 Java_io_questdb_std_Vect_setVarColumnRefs64Bit(JNIEnv *env, jclass cl, jlong pData, jlong offset,
                                                jlong count) {
-    set_var_refs<int64_t>(
-            reinterpret_cast<int64_t *>(pData),
-            __JLONG_REINTERPRET_CAST__(int64_t, offset),
-            __JLONG_REINTERPRET_CAST__(int64_t, count)
-    );
+    measure_time(21, [=]() {
+        set_var_refs<int64_t>(
+                reinterpret_cast<int64_t *>(pData),
+                __JLONG_REINTERPRET_CAST__(int64_t, offset),
+                __JLONG_REINTERPRET_CAST__(int64_t, count)
+        );
+    });
 }
 
 __SIMD_MULTIVERSION__
 JNIEXPORT void JNICALL
 Java_io_questdb_std_Vect_oooCopyIndex(JNIEnv *env, jclass cl, jlong pIndex, jlong index_size,
                                       jlong pDest) {
-    copy_index(
-            reinterpret_cast<index_t *>(pIndex),
-            __JLONG_REINTERPRET_CAST__(int64_t, index_size),
-            reinterpret_cast<int64_t *>(pDest)
-    );
+    measure_time(22, [=]() {
+        copy_index(
+                reinterpret_cast<index_t *>(pIndex),
+                __JLONG_REINTERPRET_CAST__(int64_t, index_size),
+                reinterpret_cast<int64_t *>(pDest)
+        );
+    });
 }
+
+__SIMD_MULTIVERSION__
+JNIEXPORT void JNICALL
+Java_io_questdb_std_Vect_printPerformanceCounters(JNIEnv *env, jclass cl) {
+    long total = 0;
+    std::cerr << "/====================================================================\n";
+    std::cerr << "/========================== C++ PERFORMANCE =========================\n";
+    std::cerr << "/====================================================================\n";
+
+    for (int i = 1; i < perf_counter_length; i++) {
+        long val = perf_counters[i].load();
+        std::cerr << "i:" << val <<"\n";
+        total += val;
+    }
+    std::cerr << "total:" << total <<"\n";
+    std::cerr << "/====================================================================\n";
+}
+
+__SIMD_MULTIVERSION__
+JNIEXPORT void JNICALL
+Java_io_questdb_std_Vect_resetPerformanceCounters(JNIEnv *env, jclass cl) {
+    for (int i = 0; i < perf_counter_length; i++) {
+        perf_counters[i].store(0);
+    }
+}
+
 }
 
 // ====================================================================
