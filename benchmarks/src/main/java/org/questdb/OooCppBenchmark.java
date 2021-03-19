@@ -61,7 +61,7 @@ public class OooCppBenchmark {
         Rnd random = new Rnd();
         long size = BUFFER_MAX_SIZE / Long.BYTES;
         for (int i = 0; i < size; i++) {
-            Unsafe.getUnsafe().putLong(index + (i + 1) * Long.BYTES, random.nextLong() %  size);
+            Unsafe.getUnsafe().putLong(index + (i + 1) * Long.BYTES, Math.abs(random.nextLong()) %  size);
         }
 
         try {

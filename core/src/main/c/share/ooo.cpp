@@ -27,7 +27,8 @@
 #include "util.h"
 #include "simd.h"
 #include "asmlib/asmlib.h"
-#include "vec_agg.h"
+#include "vcl/vectorclass.h"
+#include <immintrin.h>
 
 #ifdef __APPLE__
 #define __JLONG_REINTERPRET_CAST__(type, var)  (type)var
@@ -352,57 +353,88 @@ inline void run_vec_bulk(T *dest,
 }
 
 template<typename TVec, typename T>
-TVec lookup_16(Vec8uq add1, Vec8uq add2, const T* src) {
-    constexpr auto scale = sizeof(T);
-    const auto min_pointer = std::min(horizontal_min(add1), horizontal_min(add2));
-    const auto max_pointer = std::max(horizontal_max(add1), horizontal_max(add2));
-    if (max_pointer - min_pointer < INT32_MAX) {
-        if constexpr (scale >= 4) {
-            // read 32bit values
-            const Vec8ui int32_addr1 = compress(add1);
-            const Vec8ui int32_addr2 = compress(add2);
-            Vec16ui int32_addr(add1, add2);
-            return lookup<INT32_MAX>(int32_addr, src, scale);
-
+inline TVec lookup_idx16(Vec8q idx1, Vec8q idx2, const T *src) {
+#if INSTRSET >= 10
+    if constexpr (sizeof(T) == 4) {
+        const auto max_index = std::max(horizontal_max(idx1), horizontal_max(idx2));
+        if (max_index < INT32_MAX) {
+            const Vec8i int32_idx1 = compress(idx1);
+            const Vec8i int32_idx2 = compress(idx2);
+            Vec16i int32_idx16(int32_idx1, int32_idx2);
+            return _mm512_i32gather_epi32(int32_idx16, src, 4);
         }
     }
-    throw "aasdfasdfas";
+#endif
+
+    // No optimisation for 16 and 8 bit values
+    return TVec(
+            src[idx1[0]],
+            src[idx1[1]],
+            src[idx1[2]],
+            src[idx1[3]],
+            src[idx1[4]],
+            src[idx1[5]],
+            src[idx1[6]],
+            src[idx1[7]],
+
+            src[idx2[0]],
+            src[idx2[1]],
+            src[idx2[2]],
+            src[idx2[3]],
+            src[idx2[4]],
+            src[idx2[5]],
+            src[idx2[6]],
+            src[idx2[7]]);
 }
 
 template<typename TVec, typename T>
-TVec lookup_8(Vec8uq add1, const T* src) {
-    constexpr auto scale = sizeof(T);
-    const auto min_pointer = horizontal_min(add1);
-    const auto max_pointer = horizontal_max(add1);
-
-    if (max_pointer - min_pointer < INT32_MAX) {
-        if constexpr (scale >= 4) {
-            // read 32bit values
-            const Vec8ui int32_addr1 = compress(add1);
-            return lookup<INT32_MAX>(int32_addr1, src, scale);
+inline TVec lookup_idx8(Vec8uq idx, const T *src) {
+#if INSTRSET >= 8
+    if constexpr (sizeof(T) == 4) {
+        const auto max_index = horizontal_max(idx);
+        if (max_index < INT32_MAX) {
+            const Vec8i int32_idx1 = compress(idx);
+            return _mm256_i32gather_epi32(src, int32_idx1, 4);
         }
     }
-    throw "aasdfasdfas";
+#endif
+
+#if INSTRSET >= 10
+    if constexpr (sizeof(T) == 8) {
+        // VCL function is lookup
+        // but it has additional params / checks which only slow things up
+        return _mm512_i64gather_epi64(idx, src, 8);
+    }
+#endif
+
+    return TVec(
+            src[idx[0]],
+            src[idx[1]],
+            src[idx[2]],
+            src[idx[3]],
+            src[idx[4]],
+            src[idx[5]],
+            src[idx[6]],
+            src[idx[7]]);
 }
 
 template<typename TVec, typename T>
-TVec loopup_index(const int64_t i, const index_t * index, const T* src) {
+inline TVec lookup_index(const int64_t i, const index_t *index, const T *src) {
     constexpr auto vecsize = TVec::size();
     Vec8uq row_ind1 = gather8q<1, 3, 5, 7, 9, 11, 13, 15>(index + i + 0);
-
     if constexpr (vecsize == 16) {
         Vec8uq row_ind2 = gather8q<1, 3, 5, 7, 9, 11, 13, 15>(index + i + 8);
-        return lookup_16<TVec,T>(row_ind1, row_ind2, src);
+        return lookup_idx16<TVec, T>(row_ind1, row_ind2, src);
     } else if constexpr (vecsize == 8) {
-        return lookup_8<TVec,T>(row_ind1, src);
+        return lookup_idx8<TVec, T>(row_ind1, src);
     }
 }
 
-template<class T, typename TVec, int vecsize>
+template<class T, typename TVec>
 __SIMD_MULTIVERSION__
 inline void re_shuffle(const jlong pSrc, jlong pDest, const jlong pIndex, const jlong count) {
 
-    static_assert(vecsize == 8 || vecsize == 16);
+    static_assert(TVec::size() == 8 || TVec::size() == 16);
     auto src = reinterpret_cast<T *>(pSrc);
     auto dest = reinterpret_cast<T *>(pDest);
     auto index = reinterpret_cast<index_t *>(pIndex);
@@ -412,37 +444,8 @@ inline void re_shuffle(const jlong pSrc, jlong pDest, const jlong pIndex, const 
     };
 
     const auto bulk_reshuffle = [src, dest, index](const int64_t i) {
-            auto values = loopup_index<TVec, T>(i, index, src);
-            values.store_nt(dest + i);
-
-
-//        if constexpr (vecsize == 16) {
-//            TVec(src[index[i + 0].i],
-//                   src[index[i + 1].i],
-//                   src[index[i + 2].i],
-//                   src[index[i + 3].i],
-//                   src[index[i + 4].i],
-//                   src[index[i + 5].i],
-//                   src[index[i + 6].i],
-//                   src[index[i + 7].i],
-//                   src[index[i + 8].i],
-//                   src[index[i + 9].i],
-//                   src[index[i + 10].i],
-//                   src[index[i + 11].i],
-//                   src[index[i + 12].i],
-//                   src[index[i + 13].i],
-//                   src[index[i + 14].i],
-//                   src[index[i + 15].i]).store_nt(dest + i);
-//        } else {
-//            TVec(src[index[i + 0].i],
-//                   src[index[i + 1].i],
-//                   src[index[i + 2].i],
-//                   src[index[i + 3].i],
-//                   src[index[i + 4].i],
-//                   src[index[i + 5].i],
-//                   src[index[i + 6].i],
-//                   src[index[i + 7].i]).store_nt(dest + i);
-//        }
+        auto values = lookup_index<TVec, T>(i, index, src);
+        values.store_nt(dest + i);
     };
 
     run_vec_bulk<T, TVec>(
@@ -477,7 +480,7 @@ inline void merge_shuffle(const jlong pSrc1, const jlong pSrc2, jlong pDest, con
             // index is 2 longs
             // that is 4 ints. Source flag is highest bit
             // Take it as last bit of 4th integer
-            Vec16ui ind = gather16i<3, 7, 11, 15, 19, 23, 27, 31, 35, 39, 43, 47, 51, 55, 59, 63>(index + i);
+            Vec16ui ind(gather16i<3, 7, 11, 15, 19, 23, 27, 31, 35, 39, 43, 47, 51, 55, 59, 63>(index + i));
             ind >>= 31u;
             ind.store(pick_arr);
 
@@ -499,7 +502,7 @@ inline void merge_shuffle(const jlong pSrc1, const jlong pSrc2, jlong pDest, con
                  sources[pick_arr[15]][(index[i + 15].i) & row_mask]
             ).store_nt(dest + i);
         } else {
-            Vec8ui ind = gather8i<3, 7, 11, 15, 19, 23, 27, 31>(index + i);
+            Vec8ui ind(gather8i<3, 7, 11, 15, 19, 23, 27, 31>(index + i));
             ind >>= 31u;
             ind.store(pick_arr);
 
@@ -552,7 +555,7 @@ merge_shuffle_top(const jlong pSrc1, const jlong pSrc2, jlong pDest, const jlong
             // index is 2 longs
             // that is 4 ints. Source flag is highest bit
             // Take it as last bit of 4th integer
-            Vec16ui ind = gather16i<3, 7, 11, 15, 19, 23, 27, 31, 35, 39, 43, 47, 51, 55, 59, 63>(index + i);
+            Vec16ui ind(gather16i<3, 7, 11, 15, 19, 23, 27, 31, 35, 39, 43, 47, 51, 55, 59, 63>(index + i));
             ind >>= 31u;
             ind.store(pick_arr);
 
@@ -574,7 +577,7 @@ merge_shuffle_top(const jlong pSrc1, const jlong pSrc2, jlong pDest, const jlong
                  sources[pick_arr[15]][((index[i + 15].i) & row_mask) + shifts[pick_arr[15]]]
             ).store_nt(dest + i);
         } else {
-            Vec8ui ind = gather8i<3, 7, 11, 15, 19, 23, 27, 31>(index + i);
+            Vec8ui ind(gather8i<3, 7, 11, 15, 19, 23, 27, 31>(index + i));
             ind >>= 31u;
             ind.store(pick_arr);
 
@@ -834,7 +837,7 @@ inline void copy_index(const index_t *index, const int64_t count, int64_t *dest)
     auto l_iteration = [dest, index](int64_t i) {
         dest[i] = index[i].ts;
     };
-    auto l_bulk = [dest, index] (int64_t i) {
+    auto l_bulk = [dest, index](int64_t i) {
         gather8q<0, 2, 4, 6, 8, 10, 12, 14>(index + i).store_nt(dest + i);
     };
     run_vec_bulk<int64_t, Vec8q>(dest, count, l_iteration, l_bulk);
@@ -1002,28 +1005,28 @@ __SIMD_MULTIVERSION__
 JNIEXPORT void JNICALL
 Java_io_questdb_std_Vect_indexReshuffle32Bit(JNIEnv *env, jclass cl, jlong pSrc, jlong pDest, jlong pIndex,
                                              jlong count) {
-    re_shuffle<int32_t, Vec16i, 16>(pSrc, pDest, pIndex, count);
+    re_shuffle<int32_t, Vec8i>(pSrc, pDest, pIndex, count);
 }
 
 __SIMD_MULTIVERSION__
 JNIEXPORT void JNICALL
 Java_io_questdb_std_Vect_indexReshuffle64Bit(JNIEnv *env, jclass cl, jlong pSrc, jlong pDest, jlong pIndex,
                                              jlong count) {
-    re_shuffle<int64_t, Vec8q, 8>(pSrc, pDest, pIndex, count);
+    re_shuffle<int64_t, Vec8q>(pSrc, pDest, pIndex, count);
 }
 
 __SIMD_MULTIVERSION__
 JNIEXPORT void JNICALL
 Java_io_questdb_std_Vect_indexReshuffle16Bit(JNIEnv *env, jclass cl, jlong pSrc, jlong pDest, jlong pIndex,
                                              jlong count) {
-    re_shuffle<int16_t, Vec16s, 16>(pSrc, pDest, pIndex, count);
+    re_shuffle<int16_t, Vec16s>(pSrc, pDest, pIndex, count);
 }
 
 __SIMD_MULTIVERSION__
 JNIEXPORT void JNICALL
 Java_io_questdb_std_Vect_indexReshuffle8Bit(JNIEnv *env, jclass cl, jlong pSrc, jlong pDest, jlong pIndex,
                                             jlong count) {
-    re_shuffle<int8_t, Vec16c, 16>(pSrc, pDest, pIndex, count);
+    re_shuffle<int8_t, Vec16c>(pSrc, pDest, pIndex, count);
 }
 
 __SIMD_MULTIVERSION__
