@@ -194,4 +194,8 @@ public final class Vect {
     public static native long sumLong(long pLong, long count);
 
     private static native void memcpy0(long src, long dst, long len);
+
+    public static native void printPerformanceCounters();
+
+    public static native void resetPerformanceCounters();
 }
