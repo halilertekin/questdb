@@ -57,7 +57,7 @@ public class OutOfOrderTest extends AbstractGriffinTest {
 
     @Before
     public void setUp3() {
-        //Os.init();
+        Os.init();
         configuration = new DefaultCairoConfiguration(root) {
             @Override
             public boolean isOutOfOrderEnabled() {
